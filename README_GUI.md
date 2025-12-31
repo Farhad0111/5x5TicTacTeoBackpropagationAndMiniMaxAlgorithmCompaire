@@ -321,15 +321,373 @@ weight_new = weight_old - learning_rate × ∂Error/∂weight
     └── requirements.txt         # Python dependencies
 ```
 
-## 🎓 Training the Neural Network
-If you want to improve the Neural Network AI:
+## 🎓 Neural Network Training & Decision Making - Deep Dive
+
+### 🧪 How to Train the Neural Network
+
+The Neural Network learns by playing many games and adjusting its weights based on the outcomes.
+
+#### **Method 1: Command Line Training**
 
 ```bash
 cd "Backpropagation Algorithm"
 python game_logic.py train 2000 300
 ```
 
-This will train the AI with 2000 games and 300 epochs.
+**Parameters:**
+- `2000` = Number of training games to simulate
+- `300` = Number of epochs (complete passes through training data)
+
+#### **Method 2: Custom Training Script**
+
+Create a file `train_ai.py`:
+
+```python
+from game_logic import generate_training_data, train_neural_network
+from neural_network import NeuralNetwork
+
+# Step 1: Create a new neural network
+nn = NeuralNetwork(
+    input_size=25,      # 5x5 board = 25 cells
+    hidden_size=50,     # 50 neurons in hidden layer
+    output_size=1,      # 1 output (board evaluation)
+    learning_rate=0.01  # How fast the network learns
+)
+
+# Step 2: Generate training data by playing random games
+print("Generating training data...")
+X_train, y_train = generate_training_data(num_games=2000)
+# X_train: Board positions (2000 x 25 matrix)
+# y_train: Outcomes (+1 win, -1 loss, 0 draw)
+
+# Step 3: Train the network
+print("Training neural network...")
+train_neural_network(nn, X_train, y_train, epochs=300)
+
+# Step 4: Save the trained model
+nn.save('trained_model.pkl')
+print("Training complete! Model saved.")
+```
+
+Run it:
+```bash
+python train_ai.py
+```
+
+---
+
+### 🎯 How the Neural Network Makes Decisions
+
+Let's walk through a complete example of how the AI decides which move to make.
+
+#### **Step-by-Step Decision Process:**
+
+**1. Current Game State**
+```
+Board:
+  0 1 2 3 4
+0 X - - - -
+1 - O - - -
+2 - - X - -
+3 - - - - -
+4 - - - O -
+
+AI (O) needs to make a move
+```
+
+**2. Generate All Possible Moves**
+```python
+possible_moves = game_state.get_possible_moves()
+# Result: [(0,1), (0,2), (0,3), ... (4,4)]  # 21 empty cells
+```
+
+**3. Evaluate Each Possible Move**
+
+For each empty position, the AI:
+1. Creates a hypothetical board with that move
+2. Runs it through the neural network
+3. Gets an evaluation score
+
+```python
+def get_ai_move_nn(game_state, nn):
+    best_move = None
+    best_score = -999999
+    
+    for move in possible_moves:
+        # Simulate this move
+        new_state = game_state.apply_move(move)
+        
+        # Check for immediate win
+        if has_player_won(new_state, PLAYER_O):
+            return move  # Take the winning move!
+        
+        # Evaluate position using neural network
+        score = nn.evaluate_board(new_state.board)
+        
+        if score > best_score:
+            best_score = score
+            best_move = move
+    
+    return best_move
+```
+
+**4. Neural Network Evaluation (Forward Pass)**
+
+For move at position (0, 1):
+
+```python
+# Step 4a: Convert board to input vector
+board = [
+    [-1,  0, 0, 0, 0],   # X=-1, O=1, Empty=0
+    [ 0,  1, 0, 0, 0],
+    [ 0,  0,-1, 0, 0],
+    [ 0,  0, 0, 0, 0],
+    [ 0,  0, 0, 1, 0]
+]
+input_vector = np.array(board).flatten()
+# Result: [-1, 0, 0, 0, 0, 0, 1, 0, 0, 0, ... ]
+
+# Step 4b: Hidden layer computation
+hidden = np.dot(input_vector, weights1) + bias1
+hidden = ReLU(hidden)  # Apply activation
+# Result: [0.5, 2.3, 0, 1.8, ...]  # 50 values
+
+# Step 4c: Output layer computation
+output = np.dot(hidden, weights2) + bias2
+score = tanh(output)  # Value between -1 and +1
+# Result: 0.65  (Positive = good for AI)
+```
+
+**5. Compare All Moves**
+
+```python
+Move at (0,1): score = 0.65
+Move at (0,2): score = 0.42
+Move at (1,0): score = 0.73  ← Best move!
+Move at (1,2): score = 0.38
+Move at (2,0): score = 0.55
+... (check all 21 possible moves)
+```
+
+**6. Select Best Move**
+
+The AI chooses move (1, 0) with score 0.73
+
+---
+
+### 🔬 Training Process - What Actually Happens
+
+#### **Data Generation Phase**
+
+```python
+def generate_training_data(num_games=100):
+    X_train = []  # Store board positions
+    y_train = []  # Store outcomes
+    
+    for game_num in range(num_games):
+        # Play one complete game randomly
+        board = create_empty_board()
+        game_state = GameState(board, None, PLAYER_X)
+        game_history = []
+        
+        # Play until game ends
+        while not game_state.is_game_over():
+            moves = game_state.get_possible_moves()
+            move = random.choice(moves)  # Random move
+            
+            # Save this board position
+            game_history.append(board.copy())
+            
+            game_state = game_state.apply_move(move)
+        
+        # Determine outcome
+        if has_player_won(game_state, PLAYER_O):
+            outcome = 1.0   # AI won
+        elif has_player_won(game_state, PLAYER_X):
+            outcome = -1.0  # AI lost
+        else:
+            outcome = 0.0   # Draw
+        
+        # Add all positions from this game with the outcome
+        for board_position in game_history:
+            X_train.append(flatten(board_position))
+            y_train.append(outcome)
+    
+    return X_train, y_train
+```
+
+**Example Training Data:**
+```
+Board Position 1: [X, O, -, -, X, ...]  → Outcome: AI Won (+1)
+Board Position 2: [-, X, O, -, -, ...]  → Outcome: AI Lost (-1)
+Board Position 3: [O, -, X, X, O, ...]  → Outcome: Draw (0)
+... (thousands more)
+```
+
+#### **Backpropagation Training Phase**
+
+For each training example:
+
+```python
+def train_step(nn, board, target_outcome):
+    # 1. Forward pass (prediction)
+    predicted_score = nn.forward(board)
+    
+    # 2. Calculate error
+    error = target_outcome - predicted_score
+    # Example: If predicted 0.2 but outcome was 1.0
+    # Error = 1.0 - 0.2 = 0.8 (prediction too low)
+    
+    # 3. Backward pass (calculate gradients)
+    # Output layer gradient
+    output_gradient = error * tanh_derivative(predicted_score)
+    
+    # Hidden layer gradient
+    hidden_gradient = output_gradient * weights2 * relu_derivative(hidden)
+    
+    # 4. Update weights
+    weights2 += learning_rate * hidden * output_gradient
+    bias2 += learning_rate * output_gradient
+    
+    weights1 += learning_rate * input_vector * hidden_gradient
+    bias1 += learning_rate * hidden_gradient
+```
+
+#### **Training Progress Example**
+
+```
+Epoch 1/300:
+  Average Error: 0.85  (Network is guessing randomly)
+  
+Epoch 50/300:
+  Average Error: 0.42  (Starting to learn patterns)
+  
+Epoch 150/300:
+  Average Error: 0.18  (Getting better)
+  
+Epoch 300/300:
+  Average Error: 0.08  (Much more accurate!)
+```
+
+---
+
+### 🎮 Decision Making Example - Complete Walkthrough
+
+**Scenario:** AI needs to block player from winning
+
+```
+Current Board:
+  0 1 2 3 4
+0 X X - - -    ← Player has 2 in a row!
+1 - O - - -
+2 - - - - -
+3 - - - O -
+4 - - - - -
+
+AI's turn (O)
+```
+
+**AI Decision Process:**
+
+```python
+# 1. Get all possible moves
+moves = [(0,2), (0,3), (0,4), (1,0), (1,2), ...]  # 21 moves
+
+# 2. Evaluate each move
+for move in moves:
+    new_board = apply_move(current_board, move)
+    
+    # Special check: Does this move create a win for AI?
+    if has_player_won(new_board, PLAYER_O):
+        return move  # Take winning move immediately!
+    
+    # Special check: Does NOT taking this move let opponent win?
+    if opponent_can_win_next(current_board, move):
+        priority_moves.append(move)  # Block opponent!
+    
+    # Normal evaluation
+    score = neural_network.evaluate(new_board)
+    scores[move] = score
+
+# 3. Check for critical moves
+if (0,2) in priority_moves:  # This blocks opponent's win
+    return (0,2)  # Block the threat!
+
+# 4. Otherwise, choose best scored move
+best_move = max(scores, key=scores.get)
+return best_move
+```
+
+**Result:** AI plays at (0, 2) to block the player!
+
+```
+After AI Move:
+  0 1 2 3 4
+0 X X O - -    ← Blocked!
+1 - O - - -
+2 - - - - -
+3 - - - O -
+4 - - - - -
+```
+
+---
+
+### 📊 Monitoring Training Quality
+
+Check if your network is learning well:
+
+```python
+# Test the trained network
+nn = NeuralNetwork.load('trained_model.pkl')
+
+# Test position 1: Clear winning position for AI
+test_board_1 = [
+    [-1, -1,  0,  0,  0],
+    [ 1,  1,  1,  0,  0],  # AI has 3 in a row
+    [ 0,  0, -1,  0,  0],
+    [ 0,  0,  0,  0,  0],
+    [ 0,  0,  0,  0,  0]
+]
+score_1 = nn.evaluate_board(test_board_1)
+print(f"Winning position score: {score_1}")  
+# Should be positive (e.g., 0.85)
+
+# Test position 2: Losing position for AI
+test_board_2 = [
+    [ 1,  0,  0,  0,  0],
+    [-1, -1, -1,  0,  0],  # Opponent has 3 in a row
+    [ 0,  0,  1,  0,  0],
+    [ 0,  0,  0,  0,  0],
+    [ 0,  0,  0,  0,  0]
+]
+score_2 = nn.evaluate_board(test_board_2)
+print(f"Losing position score: {score_2}")
+# Should be negative (e.g., -0.72)
+```
+
+**Good Training Indicators:**
+- ✅ Winning positions get positive scores (> 0.5)
+- ✅ Losing positions get negative scores (< -0.5)
+- ✅ Neural network blocks obvious threats
+- ✅ Neural network takes winning moves when available
+
+---
+
+### 🚀 Quick Training Commands
+
+```bash
+# Quick training (500 games, 100 epochs) - ~2 minutes
+cd "Backpropagation Algorithm"
+python game_logic.py train 500 100
+
+# Medium training (2000 games, 300 epochs) - ~8 minutes
+python game_logic.py train 2000 300
+
+# Extensive training (5000 games, 500 epochs) - ~20 minutes
+python game_logic.py train 5000 500
+```
+
+The more you train, the better the AI becomes!
 
 ## 🏆 Game Rules
 - **Board**: 5x5 grid
