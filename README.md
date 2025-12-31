@@ -360,5 +360,4 @@ This will train the AI with 2000 games and 300 epochs.
 
 ## 🎉 Enjoy the Game!
 Have fun playing 5x5 Tic-Tac-Toe with AI opponents!
-#   5 x 5 T i c T a c T e o B a c k p r o p a g a t i o n A n d M i n i M a x A l g o r i t h m C o m p a i r e  
- 
+#
